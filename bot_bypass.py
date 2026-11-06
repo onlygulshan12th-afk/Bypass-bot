@@ -20,7 +20,6 @@ from telegram.ext import (
 )
 
 # ================== CONFIG ==================
-# Aapne jo token diya tha usko default set kar diya hai
 BOT_TOKEN = os.getenv("BOT_TOKEN", "9238725804:AAGSrY4BnNohMRsgEWCHJ3_wHE7AJqkGsXI").strip()
 ADMIN_ID = 8626080388
 BOT_LINK = "https://t.me/Leonbypassbot"
@@ -215,7 +214,8 @@ async def get_missing_channels(bot, uid):
     for ch in REQUIRED_CHANNELS:
         try:
             m = await bot.get_chat_member(chat_id=f"@{ch['username']}", user_id=uid)
-            if m.status not in ("member", "administrator", "creator"): missing.append(ch)
+            if m.status not in ("member", "administrator", "creator", "restricted"): 
+                missing.append(ch)
         except Exception:
             missing.append(ch)
     return missing
@@ -238,27 +238,27 @@ def force_join_msg():
 
 # ================== BUTTONS ==================
 def btn(text, **kw):
-    kw.pop('style', None) # Safely ignore custom style args to prevent PTB crashes
+    kw.pop('style', None) 
     return InlineKeyboardButton(text, **kw)
 
 def main_menu_kb():
     return InlineKeyboardMarkup([
-        [btn("🔗 " + sc("Bypass Link"), callback_data="new_lookup", style="success")],
-        [btn("💎 " + sc("My Credits"), callback_data="my_credits", style="success"),
-         btn("🎁 " + sc("Referral"), callback_data="my_referral", style="primary")],
-        [btn("🎟️ " + sc("Redeem Code"), callback_data="redeem_prompt", style="success"),
-         btn("📖 " + sc("Help"), callback_data="menu_help", style="primary")],
-        [btn("👑 " + sc("Owner"), url=OWNER_LINK, style="primary"),
-         btn("❌ " + sc("Close"), callback_data="close_menu", style="danger")],
+        [btn("🔗 " + sc("Bypass Link"), callback_data="new_lookup")],
+        [btn("💎 " + sc("My Credits"), callback_data="my_credits"),
+         btn("🎁 " + sc("Referral"), callback_data="my_referral")],
+        [btn("🎟️ " + sc("Redeem Code"), callback_data="redeem_prompt"),
+         btn("📖 " + sc("Help"), callback_data="menu_help")],
+        [btn("👑 " + sc("Owner"), url=OWNER_LINK),
+         btn("❌ " + sc("Close"), callback_data="close_menu")],
     ])
 
-def back_kb(): return InlineKeyboardMarkup([[btn("⬅️ " + sc("Back"), callback_data="main_menu", style="primary")]])
+def back_kb(): return InlineKeyboardMarkup([[btn("⬅️ " + sc("Back"), callback_data="main_menu")]])
 
 def result_kb():
     return InlineKeyboardMarkup([
-        [btn("🔍 " + sc("New Bypass"), callback_data="new_lookup", style="success"),
-         btn("🏠 " + sc("Menu"), callback_data="main_menu", style="primary")],
-        [btn("👑 " + sc("Owner"), url=OWNER_LINK, style="primary")]])
+        [btn("🔍 " + sc("New Bypass"), callback_data="new_lookup"),
+         btn("🏠 " + sc("Menu"), callback_data="main_menu")],
+        [btn("👑 " + sc("Owner"), url=OWNER_LINK)]])
 
 def admin_kb():
     return InlineKeyboardMarkup([
@@ -336,32 +336,38 @@ def no_credits_msg():
             f"  🎁 Referral share karo (+15)\n"
             f"  👑 Admin se contact karo{owner_footer()}")
 
-# ================== API & PARSER ==================
-def extract_bypass_result(data):
+# ================== API & SMART PARSER ==================
+def extract_bypass_result(data, original_query):
+    """Recursively finds all URLs and returns the first one that doesn't match the original query."""
     if not data: return None
+    found_urls = []
     
-    # Text response fallback
+    def search_obj(obj):
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                if isinstance(v, str) and v.startswith("http"):
+                    found_urls.append(v)
+                elif isinstance(v, (dict, list)):
+                    search_obj(v)
+        elif isinstance(obj, list):
+            for item in obj:
+                search_obj(item)
+        elif isinstance(obj, str):
+            urls = re.findall(r'(https?://[^\s"\'>]+)', obj)
+            found_urls.extend(urls)
+            
+    search_obj(data)
+    
+    # Fallback string regex check
     if isinstance(data, str):
-        if data.startswith("http"): return data
-        match = re.search(r'(https?://[^\s]+)', data)
-        if match: return match.group(1)
-        return data
-
-    # Dictionary parsing
-    if isinstance(data, dict):
-        for key in ("bypassed", "url", "destination", "result", "data"):
-            val = data.get(key)
-            if isinstance(val, str) and val.startswith("http"):
-                return val
-            if isinstance(val, dict):
-                sub_val = val.get("url") or val.get("destination") or val.get("link")
-                if isinstance(sub_val, str) and sub_val.startswith("http"):
-                    return sub_val
+        urls = re.findall(r'(https?://[^\s"\'>]+)', data)
+        found_urls.extend(urls)
         
-        # fallback for any string value
-        for val in data.values():
-            if isinstance(val, str) and val.startswith("http"):
-                return val
+    for url in found_urls:
+        clean_url = url.strip()
+        # Ignore the original short URL to prevent "Reason: original_link" error
+        if clean_url != original_query and len(clean_url) > 10:
+            return clean_url
             
     return None
 
@@ -370,7 +376,7 @@ def api_call(query):
     target = f"{API_BASE}{encoded_url}"
     try:
         r = HTTP_SESSION.get(target, timeout=20)
-        if r.status_code == 200:
+        if r.status_code in [200, 201]:
             try: return r.json()
             except: return r.text
     except Exception as e:
@@ -391,7 +397,6 @@ async def edit_q(q, text, **kwargs):
 async def edit_message_html(bot, chat_id, message_id, text, **kwargs):
     try: return await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, parse_mode=ParseMode.HTML, **kwargs)
     except: return await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=plain_strip(text), **kwargs)
-
 
 # ================== COMMANDS & LOGIC ==================
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -482,22 +487,22 @@ async def do_bypass(update, context, query):
 
     if not data:
         add_credits(user.id, CREDIT_PER_LOOKUP)
-        await edit_message_html(context.bot, msg.chat_id, status.message_id, error_msg("Bypass failed. Server did not respond. Credit refunded."), reply_markup=result_kb())
+        await edit_message_html(context.bot, msg.chat_id, status.message_id, error_msg("Bypass failed. Server timeout ya issue. Credit refunded."), reply_markup=result_kb())
         return
 
-    bypassed_url = extract_bypass_result(data)
+    bypassed_url = extract_bypass_result(data, query)
     
-    if not bypassed_url or bypassed_url == query:
+    if not bypassed_url:
         add_credits(user.id, CREDIT_PER_LOOKUP)
-        err_txt = bypassed_url if isinstance(bypassed_url, str) else "Could not resolve link."
-        await edit_message_html(context.bot, msg.chat_id, status.message_id, error_msg(f"Bypass failed! Credit refunded.\nReason: {err_txt}"), reply_markup=result_kb())
+        err_reason = "Server ko hidden link nahi mila ya unsupported shortener hai."
+        await edit_message_html(context.bot, msg.chat_id, status.message_id, error_msg(f"Bypass failed! Credit refunded.\nReason: {err_reason}"), reply_markup=result_kb())
         return
 
     u = get_user(user.id)
     result_text = (
         f"✅  <b>{b('Bypass Successful')}</b>  ✅\n\n"
         f"<b>• Original Link =</b> {H(query)}\n"
-        f"<b>• Bypassed Link = {bypassed_url}</b>\n\n"
+        f"<b>• Bypassed Link =</b> {bypassed_url}\n\n"
         f"💎 <b>{b('Credits Left')}</b> : <b>{u.get('credits', 0)}</b>{owner_footer()}"
     )
 
@@ -523,14 +528,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await send_html(context.bot, msg.chat_id, f"⚠️ <b>{b('Usage')}</b>\n\n<code>/bypass https://link.com</code>")
         return
 
-    # Auto detect URLs and trigger bypass
     url_match = re.search(r'(https?://[^\s]+)', text)
     if url_match:
         await do_bypass(update, context, url_match.group(1))
     else:
         await send_html(context.bot, msg.chat_id, f"⚠️ Bypassing ke liye koi valid HTTP/HTTPS link bhejiye.")
 
-# ================== REDEEM & REFERRAL & ADMIN (Same as before) ==================
+# ================== REDEEM & REFERRAL & ADMIN ==================
 async def redeem_cmd(update, context):
     msg = update.message
     user = update.effective_user
