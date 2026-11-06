@@ -1,5 +1,5 @@
 # ============================================================
-#  🚀 Leon Link Bypass Bot — FINAL
+#  🚀 Leon Link Bypass Bot — FINAL FIXED
 #  Bot: @Leonbypassbot | Admin: 8626080388 | Owner: @I339b
 # ============================================================
 
@@ -29,7 +29,6 @@ OWNER_LINK = "https://t.me/I339b"
 API_BASE = "https://altaf-api-maker.base44.app/functions/lookup?tool=shortner-bypass&key=Bypass&q="
 DB_FILE = os.getenv("DB_FILE", "leon_bypass.db").strip() or "leon_bypass.db"
 
-# Force Join Channel Configuration
 REQUIRED_CHANNELS = [
     {"username": "sterniterspro", "title": "Sterniters Pro", "url": "https://t.me/sterniterspro"},
 ]
@@ -48,7 +47,9 @@ HTTP_SESSION = requests.Session()
 HTTP_SESSION.headers.update({
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
     "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "en-US,en;q=0.9",
 })
+
 
 # ================== FONTS ==================
 def b(text):
@@ -60,18 +61,29 @@ def b(text):
         else: out.append(c)
     return "".join(out)
 
+
 def sc(text):
     m = {'a':'ᴀ','b':'ʙ','c':'ᴄ','d':'ᴅ','e':'ᴇ','f':'ꜰ','g':'ɢ','h':'ʜ','i':'ɪ',
          'j':'ᴊ','k':'ᴋ','l':'ʟ','m':'ᴍ','n':'ɴ','o':'ᴏ','p':'ᴘ','q':'ǫ','r':'ʀ',
          's':'ꜱ','t':'ᴛ','u':'ᴜ','v':'ᴠ','w':'ᴡ','x':'x','y':'ʏ','z':'ᴢ'}
     return "".join(m.get(c.lower(), c) for c in str(text))
 
+
 def H(value):
     if value is None: return "—"
     s = str(value).strip()
     if not s or s.lower() in ("null", "none"): return "—"
     s = html.escape(s, quote=False)
-    return s.replace("<", "‹").replace(">", "›")[:400]
+    return s.replace("<", "‹").replace(">", "›")[:500]
+
+
+def H_code(value):
+    if value is None: return "—"
+    s = str(value).strip()
+    if not s or s.lower() in ("null", "none"): return "—"
+    s = s.replace("<", "").replace(">", "").replace("&", "and")
+    return html.escape(s, quote=False)[:200]
+
 
 # ================== ANIMATION ==================
 LOADING_BARS = [
@@ -85,25 +97,26 @@ def progress_bar(pct):
     return LOADING_BARS[min(max(int(pct / 10), 0), 10)]
 
 ANIM_STEPS = [
-    (20, "⚡", "Initializing Bypass Engine", "Establishing secure connection..."),
-    (45, "🛰️", "Processing Short Link", "Extracting hidden destination..."),
-    (70, "🔍", "Bypassing Gateway", "Solving redirects and tokens..."),
-    (90, "🧬", "Decrypting Destination", "Finalizing real URL..."),
-    (100, "✅", "Bypass Complete", "Rendering output..."),
+    (20, "⚡", "Initializing Bypass Engine", "Connecting to bypass nodes..."),
+    (45, "🛰️", "Sending Short Link", "Bypassing ad-gateways & timers..."),
+    (70, "🔍", "Extracting Hidden URL", "Following redirects & tokens..."),
+    (90, "🧬", "Verifying DestinationLink", "Formatting clean output..."),
+    (100, "✅", "Bypass Complete", "Rendering destination link..."),
 ]
 
 def thinking_msg(step=0, query=""):
     idx = min(max(step, 0), len(ANIM_STEPS) - 1)
     pct, icon, stage, detail = ANIM_STEPS[idx]
-    q_line = f"🔗 <b>{b('Input Link')}</b> : {H(query)}\n\n" if query else ""
+    q_line = f"🔗 <b>{b('Target')}</b> : <code>{H_code(query)}</code>\n\n" if query else ""
     return (
-        f"🚀  <b>{b('Leon Link Bypass')}</b>  🚀\n\n"
+        f"👽  <b>{b('Leon Bypass Scanner')}</b>  👽\n\n"
         f"{q_line}"
         f"{icon} <b>{b(stage)}...</b>\n"
         f"<i>{detail}</i>\n\n"
         f"<code>[{progress_bar(pct)}] {pct}%</code>\n\n"
         f"⏳ <b>{sc('Please wait')}...</b>"
     )
+
 
 # ================== DATABASE ==================
 def db_init():
@@ -181,7 +194,9 @@ def remove_channel(uname):
 
 def create_code(code, credits, max_uses, created_by):
     try:
-        db_exec("INSERT INTO redeem_codes (code, credits, max_uses, created_by, created_at) VALUES (?,?,?,?,?)",
+        db_exec("""INSERT INTO redeem_codes
+                   (code, credits, max_uses, created_by, created_at)
+                   VALUES (?,?,?,?,?)""",
                 (code.upper(), credits, max_uses, created_by, int(time.time())))
         return True
     except: return False
@@ -192,123 +207,185 @@ def use_code(code, uid):
     c = get_code(code)
     if not c: return "invalid"
     if c["used_count"] >= c["max_uses"]: return "full"
-    if db_one("SELECT * FROM code_usage WHERE code=? AND user_id=?", (code.upper(), uid)): return "already"
-    db_exec("INSERT INTO code_usage (code, user_id, used_at) VALUES (?,?,?)", (code.upper(), uid, int(time.time())))
+    used = db_one("SELECT * FROM code_usage WHERE code=? AND user_id=?", (code.upper(), uid))
+    if used: return "already"
+    db_exec("INSERT INTO code_usage (code, user_id, used_at) VALUES (?,?,?)",
+            (code.upper(), uid, int(time.time())))
     db_exec("UPDATE redeem_codes SET used_count = used_count + 1 WHERE code=?", (code.upper(),))
     add_credits(uid, c["credits"])
     return c["credits"]
 
+def delete_code(code):
+    db_exec("DELETE FROM redeem_codes WHERE code=?", (code.upper(),))
+    db_exec("DELETE FROM code_usage WHERE code=?", (code.upper(),))
+
 def list_codes(): return db_fetch("SELECT * FROM redeem_codes ORDER BY created_at DESC")
-def total_users(): r = db_one("SELECT COUNT(*) as n FROM users"); return r["n"] if r else 0
+
+def total_users():
+    r = db_one("SELECT COUNT(*) as n FROM users")
+    return r["n"] if r else 0
 
 def mark_join_verified(uid):
-    db_exec("INSERT OR REPLACE INTO join_verified (user_id, verified_at) VALUES (?, ?)", (uid, int(time.time())))
+    db_exec("INSERT OR REPLACE INTO join_verified (user_id, verified_at) VALUES (?, ?)",
+            (uid, int(time.time())))
 
-def is_join_verified(uid):
-    r = db_one("SELECT * FROM join_verified WHERE user_id=?", (uid,))
-    return bool(r and (int(time.time()) - r["verified_at"]) < 3600)
 
-# ================== FORCE JOIN ==================
+# ================== STRICT FORCE JOIN ==================
+def all_required_channels():
+    chs = list(REQUIRED_CHANNELS)
+    existing = {c["username"].lower() for c in chs}
+    for ac in get_admin_channels():
+        un = ac["username"].lower().strip().lstrip("@")
+        if un and un not in existing:
+            chs.append({
+                "username": un,
+                "title": ac.get("title") or un,
+                "url": f"https://t.me/{un}",
+            })
+            existing.add(un)
+    return chs
+
+
 async def get_missing_channels(bot, uid):
     missing = []
-    for ch in REQUIRED_CHANNELS:
+    for ch in all_required_channels():
         try:
             m = await bot.get_chat_member(chat_id=f"@{ch['username']}", user_id=uid)
-            if m.status not in ("member", "administrator", "creator", "restricted"): 
+            status = m.status
+            if status not in ("member", "administrator", "creator"):
                 missing.append(ch)
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Channel check @{ch['username']} for {uid}: {e}")
             missing.append(ch)
     return missing
 
+
 def force_join_kb():
-    rows = [[InlineKeyboardButton(f"📢 Join {ch['title']}", url=ch["url"])] for ch in REQUIRED_CHANNELS]
-    rows.append([InlineKeyboardButton("✅ I Joined All", callback_data="check_join_now")])
+    rows = []
+    for ch in all_required_channels():
+        rows.append([InlineKeyboardButton(
+            f"📢 Join {ch['title']}",
+            url=ch["url"],
+            style="primary"
+        )])
+    rows.append([InlineKeyboardButton(
+        "✅ I Joined All",
+        callback_data="check_join_now",
+        style="success"
+    )])
     return InlineKeyboardMarkup(rows)
 
+
 def force_join_msg():
+    ch_lines = "\n".join(f"  🔗 @{c['username']}" for c in all_required_channels())
     return (
         f"🔒  <b>{b('Join Required')}</b>  🔒\n\n"
         f"👋 Bot use karne se pehle\n"
         f"channel join karna zaroori hai\n\n"
         f"📢 <b>{b('Required Channel')}</b> :\n"
-        f"  🔗 @sterniterspro\n\n"
+        f"{ch_lines}\n\n"
         f"👇 Neeche button se join karo\n"
         f"Phir ✅ <b>I Joined All</b> dabao"
     )
 
-# ================== BUTTONS ==================
+
+# ================== COLORED BUTTONS ==================
 def btn(text, **kw):
-    kw.pop('style', None) 
     return InlineKeyboardButton(text, **kw)
 
 def main_menu_kb():
     return InlineKeyboardMarkup([
-        [btn("🔗 " + sc("Bypass Link"), callback_data="new_lookup")],
-        [btn("💎 " + sc("My Credits"), callback_data="my_credits"),
-         btn("🎁 " + sc("Referral"), callback_data="my_referral")],
-        [btn("🎟️ " + sc("Redeem Code"), callback_data="redeem_prompt"),
-         btn("📖 " + sc("Help"), callback_data="menu_help")],
-        [btn("👑 " + sc("Owner"), url=OWNER_LINK),
-         btn("❌ " + sc("Close"), callback_data="close_menu")],
+        [btn("🔓 " + sc("Bypass Link"), callback_data="hlp_bypass", style="success"),
+         btn("⚡ " + sc("Supported"), callback_data="hlp_supported", style="primary")],
+        [btn("💎 " + sc("My Credits"), callback_data="my_credits", style="success"),
+         btn("🎁 " + sc("Referral"), callback_data="my_referral", style="primary")],
+        [btn("🎟️ " + sc("Redeem Code"), callback_data="redeem_prompt", style="success"),
+         btn("📖 " + sc("Help"), callback_data="menu_help", style="primary")],
+        [btn("👑 " + sc("Owner"), url=OWNER_LINK, style="primary"),
+         btn("❌ " + sc("Close"), callback_data="close_menu", style="danger")],
     ])
 
-def back_kb(): return InlineKeyboardMarkup([[btn("⬅️ " + sc("Back"), callback_data="main_menu")]])
-
-def result_kb():
+def back_kb():
     return InlineKeyboardMarkup([
-        [btn("🔍 " + sc("New Bypass"), callback_data="new_lookup"),
-         btn("🏠 " + sc("Menu"), callback_data="main_menu")],
-        [btn("👑 " + sc("Owner"), url=OWNER_LINK)]])
+        [btn("⬅️ " + sc("Back"), callback_data="main_menu", style="primary")]])
+
+def result_kb(bypassed_url=None):
+    rows = []
+    if bypassed_url and bypassed_url.startswith(("http://", "https://")):
+        rows.append([btn("🌐 " + sc("Open Bypassed Link"), url=bypassed_url, style="success")])
+    rows.append([
+        btn("🔓 " + sc("New Bypass"), callback_data="new_lookup", style="success"),
+        btn("🏠 " + sc("Menu"), callback_data="main_menu", style="primary")
+    ])
+    rows.append([btn("👑 " + sc("Owner"), url=OWNER_LINK, style="primary")])
+    return InlineKeyboardMarkup(rows)
 
 def admin_kb():
     return InlineKeyboardMarkup([
-        [btn("📊 " + sc("Stats"), callback_data="a_stats"), btn("📢 " + sc("Channels"), callback_data="a_channels")],
-        [btn("🎟️ " + sc("Create Code"), callback_data="a_code_create"), btn("📋 " + sc("List Codes"), callback_data="a_code_list")],
-        [btn("📣 " + sc("Broadcast"), callback_data="a_broadcast"), btn("❌ " + sc("Close"), callback_data="a_close")]])
+        [btn("📊 " + sc("Stats"), callback_data="a_stats", style="success"),
+         btn("📢 " + sc("Channels"), callback_data="a_channels", style="primary")],
+        [btn("🎟️ " + sc("Create Code"), callback_data="a_code_create", style="success"),
+         btn("📋 " + sc("List Codes"), callback_data="a_code_list", style="primary")],
+        [btn("🗑️ " + sc("Delete Code"), callback_data="a_code_del", style="danger"),
+         btn("📣 " + sc("Broadcast"), callback_data="a_broadcast", style="primary")],
+        [btn("❌ " + sc("Close"), callback_data="a_close", style="danger")]])
 
 def channels_kb():
     return InlineKeyboardMarkup([
-        [btn("➕ " + sc("Add Channel"), callback_data="a_ch_add"), btn("➖ " + sc("Remove Channel"), callback_data="a_ch_remove")],
-        [btn("📋 " + sc("List Channels"), callback_data="a_ch_list"), btn("⬅️ " + sc("Back"), callback_data="a_back")]])
+        [btn("➕ " + sc("Add Channel"), callback_data="a_ch_add", style="success"),
+         btn("➖ " + sc("Remove Channel"), callback_data="a_ch_remove", style="danger")],
+        [btn("📋 " + sc("List Channels"), callback_data="a_ch_list", style="primary"),
+         btn("⬅️ " + sc("Back"), callback_data="a_back", style="primary")]])
+
 
 def owner_footer():
     return (f"\n\n━━━━━━━━━━━━━━━━━━━━━━━\n"
             f"👑 <b>{b('Owner')}</b> : {OWNER_USERNAME}\n"
             f"🤖 <b>{b('Bot')}</b> : @Leonbypassbot")
 
+
 # ================== MESSAGES ==================
 def welcome_msg(uid):
     u = get_user(uid) or {}
     return (
-        f"🚀  <b>{b('Leon Link Bypass')}</b>  🚀\n\n"
+        f"👽  <b>{b('Leon Bypass Bot')}</b>  👽\n\n"
         f"👋 <b>{b('Namaste')}</b>, <b>{H(u.get('first_name') or 'Dost')}</b>!\n\n"
-        f"Main ek advanced Link Bypass bot hoon.\n"
-        f"Kisi bhi annoying shortener link ko bhejo, aur\n"
-        f"main uska direct destination nikal dunga.\n\n"
+        f"Main ek advanced Shortener Bypass bot hoon.\n"
+        f"Kisi bhi shortener link ke andar chupa hua\n"
+        f"real destination link turant nikal sakta hoon.\n\n"
         f"💎 <b>{b('Credits')}</b> : <b>{u.get('credits', 0)}</b>\n"
         f"🎁 <b>{b('Referrals')}</b> : <b>{u.get('referral_count', 0)}</b>\n\n"
-        f"👇 Seedha chat me link bhejo ya menu use karo!{owner_footer()}")
+        f"✨ <b>{b('Features')}</b> :\n"
+        f"  🔓 {sc('Instant Shortener Bypass')}\n"
+        f"  ⚡ {sc('Auto Link Detection')}\n"
+        f"  🛡️ {sc('Ad-Gateway Unlocker')}\n\n"
+        f"👇 Seedha link bhejo ya neeche buttons use karo{owner_footer()}")
+
 
 def help_msg():
     return (
         f"📖  <b>{b('Help Menu')}</b>  📖\n\n"
-        f"🔗 <b>{b('HOW TO BYPASS')}</b>\n"
-        f"Bas koi bhi link copy karo aur chat me paste kardo.\n"
-        f"Example: <code>https://gplinks.co/XYZ</code>\n\n"
+        f"🔓 <b>{b('DIRECT BYPASS')}</b>\n"
+        f"Seedha chat me koi bhi shortener link bhejo!\n"
+        f"Example : <code>https://shortxlinks.in/EqJlsCQt</code>\n\n"
+        f"🔗 <b>{b('COMMAND BYPASS')}</b>\n"
+        f"<code>/bypass https://softurl.in/cnqT</code>\n\n"
         f"🎟️ <b>{b('REDEEM')}</b> : <code>/redeem CODE</code>\n"
         f"🎁 <b>{b('REFERRAL')}</b> : <code>/refer</code>\n"
         f"💎 <b>{b('CREDITS')}</b> : <code>/credits</code>\n\n"
-        f"💡 Har bypass ka 1 credit lagta hai.{owner_footer()}")
+        f"💡 Seedha link paste karo, bot auto bypass kar dega!{owner_footer()}")
+
 
 def credits_msg(uid):
     u = get_user(uid) or {}
     return (
         f"💎  <b>{b('My Credits')}</b>  💎\n\n"
         f"💎 <b>{b('Balance')}</b> : <b>{u.get('credits', 0)}</b>\n"
-        f"📊 <b>{b('Total Bypassed')}</b> : {u.get('total_lookups', 0)}\n"
+        f"📊 <b>{b('Total Bypass')}</b> : {u.get('total_lookups', 0)}\n"
         f"🎁 <b>{b('Referrals')}</b> : {u.get('referral_count', 0)}\n\n"
-        f"Har lookup me 1 credit lagta hai.\n"
+        f"Har bypass me 1 credit lagta hai.\n"
         f"Referral se 15 credits milte hain.{owner_footer()}")
+
 
 def referral_msg(uid, bot_username):
     u = get_user(uid) or {}
@@ -316,17 +393,19 @@ def referral_msg(uid, bot_username):
     return (
         f"🎁  <b>{b('Referral Program')}</b>  🎁\n\n"
         f"🔗 <b>{b('Your Link')}</b> :\n"
-        f"<code>{H(link)}</code>\n\n"
+        f"<code>{H_code(link)}</code>\n\n"
         f"💰 <b>{b('Rewards')}</b> :\n"
         f"  Naye user ko : +{REFERRAL_BONUS_NEW}\n"
         f"  Tumhe : +{REFERRAL_REWARD}\n\n"
         f"🎁 <b>{b('Your Referrals')}</b> : {u.get('referral_count', 0)}\n\n"
         f"Link share karo aur credits kamao!{owner_footer()}")
 
+
 def error_msg(reason=""):
     r = f"\n💡 {H(reason)}" if reason else ""
     return (f"❌  <b>{b('Oops! Kuch galat ho gaya')}</b>  ❌{r}\n\n"
             f"🔁 Dubara try karo.{owner_footer()}")
+
 
 def no_credits_msg():
     return (f"💔  <b>{b('Insufficient Credits')}</b>  💔\n\n"
@@ -336,69 +415,165 @@ def no_credits_msg():
             f"  🎁 Referral share karo (+15)\n"
             f"  👑 Admin se contact karo{owner_footer()}")
 
-# ================== API & SMART PARSER ==================
+
+# ================== API & WEB-APP PARSER ==================
+def norm_url(u):
+    if not u: return ""
+    return re.sub(r"^https?://(www\.)?", "", str(u).strip(), flags=re.IGNORECASE).rstrip("/").lower()
+
+
 def extract_bypass_result(data, original_query):
-    """Recursively finds all URLs and returns the first one that doesn't match the original query."""
-    if not data: return None
-    found_urls = []
-    
-    def search_obj(obj):
-        if isinstance(obj, dict):
+    """
+    Identical smart parser to the Web App:
+    1. Checks direct JSON keys (bypassed, destination, final_url, result, data, etc.)
+    2. Parses multi-line text reports (like altaf-api's report format) for BYPASSED/DESTINATION/FINAL labels
+    3. Extracts all URLs from all strings inside JSON and picks the non-original URL
+    """
+    if not data:
+        return None
+
+    orig_norm = norm_url(original_query)
+
+    # Collect all text pieces and inspect structured keys
+    all_texts = []
+
+    def walk(obj):
+        if obj is None:
+            return
+        if isinstance(obj, str):
+            all_texts.append(obj)
+        elif isinstance(obj, dict):
+            # Priority keys first
+            priority_keys = (
+                "bypassed", "bypassed_url", "bypassed_link", "destination",
+                "destination_url", "final_url", "final_link", "direct_url",
+                "direct_link", "target_url", "target", "real_url", "resolved_url",
+                "unlocked_url", "output", "result", "data", "response", "url", "link"
+            )
+            seen = set()
+            for pk in priority_keys:
+                for k, v in obj.items():
+                    if k.lower() == pk and k not in seen:
+                        seen.add(k)
+                        walk(v)
             for k, v in obj.items():
-                if isinstance(v, str) and v.startswith("http"):
-                    found_urls.append(v)
-                elif isinstance(v, (dict, list)):
-                    search_obj(v)
+                if k not in seen:
+                    walk(v)
         elif isinstance(obj, list):
             for item in obj:
-                search_obj(item)
-        elif isinstance(obj, str):
-            urls = re.findall(r'(https?://[^\s"\'>]+)', obj)
-            found_urls.extend(urls)
-            
-    search_obj(data)
-    
-    # Fallback string regex check
-    if isinstance(data, str):
-        urls = re.findall(r'(https?://[^\s"\'>]+)', data)
-        found_urls.extend(urls)
-        
-    for url in found_urls:
-        clean_url = url.strip()
-        # Ignore the original short URL to prevent "Reason: original_link" error
-        if clean_url != original_query and len(clean_url) > 10:
-            return clean_url
-            
+                walk(item)
+        else:
+            all_texts.append(str(obj))
+
+    walk(data)
+    combined_text = "\n".join(all_texts)
+
+    # Step 1: Check explicit labeled lines in the report text (e.g. "BYPASSED URL : https://...")
+    label_patterns = [
+        r"(?:BYPASSED|DESTINATION|FINAL|DIRECT|REAL|TARGET|UNLOCKED|RESOLVED|DECRYPTED|EXTRACTED|OUTPUT)\s*(?:LINK|URL|DESTINATION|ADDRESS)?\s*[:=\-]+\s*(https?://[^\s<>\"'\)\]]+)",
+        r"(?:BYPASSED|DESTINATION|FINAL|DIRECT|REAL|TARGET|UNLOCKED|RESOLVED)\s*[:=\-]+\s*(https?://[^\s<>\"'\)\]]+)",
+        r"(?:BYPASSED|DESTINATION|FINAL|DIRECT|REAL|TARGET)\s*(?:LINK|URL)?\s*[:=\-]+\s*((?:t\.me|telegram\.me|mega\.nz|drive\.google\.com)/[^\s<>\"'\)\]]+)",
+    ]
+    for pat in label_patterns:
+        matches = re.findall(pat, combined_text, flags=re.IGNORECASE)
+        for m in matches:
+            candidate = m.strip().rstrip(".,;)")
+            if not candidate.startswith(("http://", "https://")):
+                candidate = "https://" + candidate
+            if norm_url(candidate) != orig_norm and "altaf-api-maker" not in candidate.lower():
+                return candidate
+
+    # Step 2: Find all http/https URLs anywhere in the response
+    all_urls = re.findall(r"(https?://[^\s<>\"'\)\]]+)", combined_text)
+    non_orig_urls = []
+    for u in all_urls:
+        clean_u = u.strip().rstrip(".,;)")
+        if "altaf-api-maker.base44.app" in clean_u.lower():
+            continue
+        if norm_url(clean_u) != orig_norm:
+            non_orig_urls.append(clean_u)
+
+    if non_orig_urls:
+        # Return the last extracted non-original URL (in reports, Original is first, Bypassed is last)
+        return non_orig_urls[-1]
+
+    # Step 3: Check for t.me / telegram.dog links without http:// scheme in the report
+    tg_links = re.findall(r"\b((?:t\.me|telegram\.me|telegram\.dog)/[A-Za-z0-9_/\+\-\?=&]+)", combined_text, flags=re.IGNORECASE)
+    for tl in tg_links:
+        full_tl = "https://" + tl.strip().rstrip(".,;)")
+        if norm_url(full_tl) != orig_norm:
+            return full_tl
+
     return None
+
 
 def api_call(query):
-    encoded_url = quote(query)
-    target = f"{API_BASE}{encoded_url}"
-    try:
-        r = HTTP_SESSION.get(target, timeout=20)
-        if r.status_code in [200, 201]:
-            try: return r.json()
-            except: return r.text
-    except Exception as e:
-        logger.error(f"API Bypass error: {e}")
+    clean_q = str(query).strip()
+    # Try encodeURIComponent style (safe='') first, just like the working Web App
+    encoded_variants = [quote(clean_q, safe=""), quote(clean_q, safe=":/?&=")]
+
+    for enc in encoded_variants:
+        url = f"{API_BASE}{enc}"
+        try:
+            r = HTTP_SESSION.get(url, timeout=25)
+            if r.status_code in (200, 201):
+                parsed = None
+                try:
+                    parsed = r.json()
+                except Exception:
+                    parsed = r.text
+                if parsed:
+                    bypassed = extract_bypass_result(parsed, clean_q)
+                    if bypassed:
+                        return {"bypassed_url": bypassed, "raw": parsed}
+        except Exception as e:
+            logger.warning(f"API attempt error: {e}")
+
     return None
 
+
 # ================== SAFE SEND/EDIT ==================
-def plain_strip(text): return re.sub(r"<[^>]+>", "", str(text))
+def plain_strip(text):
+    return re.sub(r"<[^>]+>", "", str(text))
 
 async def send_html(bot, chat_id, text, **kwargs):
-    try: return await bot.send_message(chat_id, text, parse_mode=ParseMode.HTML, **kwargs)
-    except: return await bot.send_message(chat_id, plain_strip(text), **kwargs)
+    try:
+        return await bot.send_message(chat_id, text, parse_mode=ParseMode.HTML, **kwargs)
+    except Exception as e:
+        logger.warning(f"HTML send failed: {e}")
+        try:
+            kwargs_plain = dict(kwargs)
+            return await bot.send_message(chat_id, plain_strip(text), **kwargs_plain)
+        except Exception as e2:
+            logger.error(f"Plain send failed: {e2}")
+            return None
 
 async def edit_q(q, text, **kwargs):
-    try: return await q.edit_message_text(text=text, parse_mode=ParseMode.HTML, **kwargs)
-    except: return await q.edit_message_text(text=plain_strip(text), **kwargs)
+    try:
+        return await q.edit_message_text(text=text, parse_mode=ParseMode.HTML, **kwargs)
+    except Exception as e:
+        logger.warning(f"q.edit failed: {e}")
+        try:
+            return await q.edit_message_text(text=plain_strip(text), **kwargs)
+        except Exception as e2:
+            logger.error(f"q plain edit failed: {e2}")
+            return None
 
 async def edit_message_html(bot, chat_id, message_id, text, **kwargs):
-    try: return await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, parse_mode=ParseMode.HTML, **kwargs)
-    except: return await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=plain_strip(text), **kwargs)
+    try:
+        return await bot.edit_message_text(chat_id=chat_id, message_id=message_id,
+                                            text=text, parse_mode=ParseMode.HTML, **kwargs)
+    except Exception as e:
+        logger.warning(f"HTML edit failed: {e}")
+        try:
+            return await bot.edit_message_text(chat_id=chat_id, message_id=message_id,
+                                                text=plain_strip(text), **kwargs)
+        except Exception as e2:
+            logger.error(f"Plain edit failed: {e2}")
+            return None
 
-# ================== COMMANDS & LOGIC ==================
+
+# ================== /start ==================
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
     user = update.effective_user
@@ -420,14 +595,22 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             inc_referral(referred_by)
             add_credits(user.id, REFERRAL_BONUS_NEW)
             try:
-                await send_html(context.bot, referred_by, f"🎁 <b>{b('New Referral!')}</b>\n\n👤 {H(user.first_name)} ne tumhara link use kiya\n💰 Tumhe <b>+{REFERRAL_REWARD}</b> credits mile! 🎉")
+                await context.bot.send_message(referred_by,
+                    f"🎁 <b>{b('New Referral!')}</b>\n\n"
+                    f"👤 {H(user.first_name)} ne tumhara link use kiya\n"
+                    f"💰 Tumhe <b>+{REFERRAL_REWARD}</b> credits mile! 🎉",
+                    parse_mode=ParseMode.HTML)
             except: pass
     else:
-        db_exec("UPDATE users SET last_seen=?, username=?, first_name=? WHERE user_id=?", (int(time.time()), user.username or "", user.first_name or "", user.id))
+        db_exec("UPDATE users SET last_seen=?, username=?, first_name=? WHERE user_id=?",
+                (int(time.time()), user.username or "", user.first_name or "", user.id))
 
+    # Strict Force Join check for all users (except Admin)
     if user.id != ADMIN_ID:
-        if await get_missing_channels(context.bot, user.id):
-            await send_html(context.bot, msg.chat_id, force_join_msg(), reply_markup=force_join_kb())
+        missing = await get_missing_channels(context.bot, user.id)
+        if missing:
+            await send_html(context.bot, msg.chat_id, force_join_msg(),
+                             reply_markup=force_join_kb())
             return
 
     if is_new:
@@ -436,22 +619,40 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"👋 <b>{b('Namaste')}</b> {H(user.first_name)}!\n\n"
                 f"✅ <b>{b('Account created!')}</b>\n\n"
                 f"💎 <b>{b('Starting Credits')}</b> : {CREDIT_START}\n")
-        if referred_by: text += f"🎁 <b>{b('Referral Bonus')}</b> : +{REFERRAL_BONUS_NEW}\n"
-        text += f"\n🎯 <b>{b('Total Credits')}</b> : {u.get('credits', CREDIT_START)}\n\nAb bot use kar sakte ho!{owner_footer()}"
-        await send_html(context.bot, msg.chat_id, text, reply_markup=main_menu_kb(), disable_web_page_preview=True)
+        if referred_by:
+            text += f"🎁 <b>{b('Referral Bonus')}</b> : +{REFERRAL_BONUS_NEW}\n"
+        text += (f"\n🎯 <b>{b('Total Credits')}</b> : {u.get('credits', CREDIT_START)}\n\n"
+                 f"Ab koi bhi shortener link bhejo!{owner_footer()}")
+        await send_html(context.bot, msg.chat_id, text, reply_markup=main_menu_kb(),
+                         disable_web_page_preview=True)
     else:
-        await send_html(context.bot, msg.chat_id, welcome_msg(user.id), reply_markup=main_menu_kb(), disable_web_page_preview=True)
+        await send_html(context.bot, msg.chat_id, welcome_msg(user.id),
+                         reply_markup=main_menu_kb(), disable_web_page_preview=True)
+
+
+# ================== BYPASS HANDLER ==================
+async def bypass_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await send_html(context.bot, update.message.chat_id,
+                         f"⚠️ <b>{b('Usage')}</b>\n\n<code>/bypass https://shortxlinks.in/EqJlsCQt</code>")
+        return
+    query = " ".join(context.args).strip()
+    await do_bypass(update, context, query)
 
 
 async def do_bypass(update, context, query):
     msg = update.message
     user = update.effective_user
 
-    if not get_user(user.id): create_user(user.id, user.username or "", user.first_name or "")
+    if not get_user(user.id):
+        create_user(user.id, user.username or "", user.first_name or "")
 
+    # Strict Force Join check
     if user.id != ADMIN_ID:
-        if await get_missing_channels(context.bot, user.id):
-            await send_html(context.bot, msg.chat_id, force_join_msg(), reply_markup=force_join_kb())
+        missing = await get_missing_channels(context.bot, user.id)
+        if missing:
+            await send_html(context.bot, msg.chat_id, force_join_msg(),
+                             reply_markup=force_join_kb())
             return
 
     if not use_credits(user.id, CREDIT_PER_LOOKUP):
@@ -459,137 +660,194 @@ async def do_bypass(update, context, query):
         return
 
     inc_lookup(user.id)
-    try: await context.bot.send_chat_action(chat_id=msg.chat_id, action=ChatAction.TYPING)
+
+    try:
+        await context.bot.send_chat_action(chat_id=msg.chat_id, action=ChatAction.TYPING)
     except: pass
 
-    status = await send_html(context.bot, msg.chat_id, thinking_msg(0, query))
+    status = await send_html(context.bot, msg.chat_id, thinking_msg(0, query), disable_web_page_preview=True)
     if not status: return
 
     api_task = asyncio.create_task(asyncio.to_thread(api_call, query))
-    current_step = 1
 
+    current_step = 1
     while not api_task.done() and current_step < 4:
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(0.45)
         if not api_task.done():
-            try: await status.edit_text(thinking_msg(current_step, query), parse_mode=ParseMode.HTML, disable_web_page_preview=True)
-            except: pass
+            try:
+                await status.edit_text(thinking_msg(current_step, query),
+                                       parse_mode=ParseMode.HTML,
+                                       disable_web_page_preview=True)
+            except:
+                pass
             current_step += 1
 
     while current_step < 5:
-        try: await status.edit_text(thinking_msg(current_step, query), parse_mode=ParseMode.HTML, disable_web_page_preview=True)
-        except: pass
+        try:
+            await status.edit_text(thinking_msg(current_step, query),
+                                   parse_mode=ParseMode.HTML,
+                                   disable_web_page_preview=True)
+        except:
+            pass
         current_step += 1
-        await asyncio.sleep(0.2)
+        await asyncio.sleep(0.22)
 
-    data = None
-    try: data = await api_task
-    except: pass
+    res = None
+    try:
+        res = await api_task
+    except Exception as e:
+        logger.error(f"API task error: {e}")
 
-    if not data:
+    if not res or not res.get("bypassed_url"):
         add_credits(user.id, CREDIT_PER_LOOKUP)
-        await edit_message_html(context.bot, msg.chat_id, status.message_id, error_msg("Bypass failed. Server timeout ya issue. Credit refunded."), reply_markup=result_kb())
+        await edit_message_html(
+            context.bot, msg.chat_id, status.message_id,
+            error_msg("Is link ko bypass nahi kiya ja saka. Credit refunded."),
+            reply_markup=result_kb()
+        )
         return
 
-    bypassed_url = extract_bypass_result(data, query)
-    
-    if not bypassed_url:
-        add_credits(user.id, CREDIT_PER_LOOKUP)
-        err_reason = "Server ko hidden link nahi mila ya unsupported shortener hai."
-        await edit_message_html(context.bot, msg.chat_id, status.message_id, error_msg(f"Bypass failed! Credit refunded.\nReason: {err_reason}"), reply_markup=result_kb())
-        return
+    bypassed_url = res["bypassed_url"]
+    u = get_user(user.id) or {}
+    credits = u.get("credits", 0)
 
-    u = get_user(user.id)
     result_text = (
-        f"✅  <b>{b('Bypass Successful')}</b>  ✅\n\n"
-        f"<b>• Original Link =</b> {H(query)}\n"
-        f"<b>• Bypassed Link =</b> {bypassed_url}\n\n"
-        f"💎 <b>{b('Credits Left')}</b> : <b>{u.get('credits', 0)}</b>{owner_footer()}"
+        f"🔓  <b>{b('Bypass Result')}</b>  🔓\n\n"
+        f"🎯 <b>{b('Query')}</b> : <code>{H_code(query)}</code>\n\n"
+        f"<b>• Short Link = {H(query)}</b>\n"
+        f"<b>• Bypassed Link = {H(bypassed_url)}</b>\n\n"
+        f"💎 <b>{b('Credits Left')}</b> : <b>{credits}</b>{owner_footer()}"
     )
 
-    await edit_message_html(context.bot, msg.chat_id, status.message_id, result_text, reply_markup=result_kb(), disable_web_page_preview=True)
+    await edit_message_html(
+        context.bot, msg.chat_id, status.message_id, result_text,
+        reply_markup=result_kb(bypassed_url),
+        disable_web_page_preview=True
+    )
 
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = update.message
-    if not msg or not msg.text: return
-    user = msg.from_user
-    text = msg.text.strip()
-
-    if user.id == ADMIN_ID:
-        handled = await handle_admin_text(update, context)
-        if handled: return
-
-    if text.startswith("/"):
-        if text.startswith("/bypass"):
-            parts = text.split(maxsplit=1)
-            if len(parts) > 1:
-                await do_bypass(update, context, parts[1].strip())
-            else:
-                await send_html(context.bot, msg.chat_id, f"⚠️ <b>{b('Usage')}</b>\n\n<code>/bypass https://link.com</code>")
-        return
-
-    url_match = re.search(r'(https?://[^\s]+)', text)
-    if url_match:
-        await do_bypass(update, context, url_match.group(1))
-    else:
-        await send_html(context.bot, msg.chat_id, f"⚠️ Bypassing ke liye koi valid HTTP/HTTPS link bhejiye.")
-
-# ================== REDEEM & REFERRAL & ADMIN ==================
+# ================== REDEEM / REFER / CREDITS ==================
 async def redeem_cmd(update, context):
     msg = update.message
     user = update.effective_user
-    if not get_user(user.id): create_user(user.id, user.username or "", user.first_name or "")
-    if user.id != ADMIN_ID and await get_missing_channels(context.bot, user.id):
-        await send_html(context.bot, msg.chat_id, force_join_msg(), reply_markup=force_join_kb()); return
+    if not get_user(user.id):
+        create_user(user.id, user.username or "", user.first_name or "")
+
+    if user.id != ADMIN_ID:
+        missing = await get_missing_channels(context.bot, user.id)
+        if missing:
+            await send_html(context.bot, msg.chat_id, force_join_msg(),
+                             reply_markup=force_join_kb())
+            return
+
     if not context.args:
-        await send_html(context.bot, msg.chat_id, f"🎟️ <b>{b('Redeem Code')}</b>\n\nUsage : <code>/redeem YOURCODE</code>"); return
-    
+        await send_html(context.bot, msg.chat_id,
+                         f"🎟️ <b>{b('Redeem Code')}</b>\n\nUsage : <code>/redeem YOURCODE</code>")
+        return
+
     code = context.args[0].strip().upper()
+    status = await send_html(context.bot, msg.chat_id,
+                              f"🎟️ <b>{b('Checking code')}...</b>\n\n"
+                              f"<code>[{progress_bar(40)}] 40%</code>")
+    if status:
+        await asyncio.sleep(0.35)
+        try:
+            await status.edit_text(
+                f"🎟️ <b>{b('Validating')}...</b>\n\n<code>[{progress_bar(85)}] 85%</code>",
+                parse_mode=ParseMode.HTML)
+        except: pass
+        await asyncio.sleep(0.35)
+
     result = use_code(code, user.id)
-    if result == "invalid": text = f"❌ <b>{b('Invalid Code')}</b>\n\nYe code exist nahi karta.{owner_footer()}"
-    elif result == "already": text = f"⚠️ <b>{b('Already Used')}</b>\n\nTum ye code pehle use kar chuke ho.{owner_footer()}"
-    elif result == "full": text = f"❌ <b>{b('Code Expired')}</b>\n\nIs code ke saare uses khatam.{owner_footer()}"
+    if result == "invalid":
+        text = f"❌ <b>{b('Invalid Code')}</b>\n\nYe code exist nahi karta.{owner_footer()}"
+    elif result == "already":
+        text = f"⚠️ <b>{b('Already Used')}</b>\n\nTum ye code pehle use kar chuke ho.{owner_footer()}"
+    elif result == "full":
+        text = f"❌ <b>{b('Code Expired')}</b>\n\nIs code ke saare uses khatam.{owner_footer()}"
     else:
         u = get_user(user.id)
         text = (f"🎉  <b>{b('Code Redeemed!')}</b>  🎉\n\n"
-                f"🎟️ <b>{b('Code')}</b> : <code>{H(code)}</code>\n"
+                f"🎟️ <b>{b('Code')}</b> : <code>{H_code(code)}</code>\n"
                 f"💰 <b>{b('Credits Added')}</b> : +{result}\n"
-                f"💎 <b>{b('New Balance')}</b> : {u.get('credits', 0)}\n\nAb bot use karo!{owner_footer()}")
-    await send_html(context.bot, msg.chat_id, text, reply_markup=result_kb())
+                f"💎 <b>{b('New Balance')}</b> : {u.get('credits', 0)}\n\n"
+                f"Ab bot use karo!{owner_footer()}")
+
+    if status:
+        await edit_message_html(context.bot, msg.chat_id, status.message_id, text,
+                                 reply_markup=result_kb())
+    else:
+        await send_html(context.bot, msg.chat_id, text, reply_markup=result_kb())
+
 
 async def refer_cmd(update, context):
-    if not get_user(update.effective_user.id): create_user(update.effective_user.id, "", "")
+    msg = update.message
+    user = update.effective_user
+    if not get_user(user.id):
+        create_user(user.id, user.username or "", user.first_name or "")
+    if user.id != ADMIN_ID:
+        missing = await get_missing_channels(context.bot, user.id)
+        if missing:
+            await send_html(context.bot, msg.chat_id, force_join_msg(), reply_markup=force_join_kb())
+            return
     bot_info = await context.bot.get_me()
-    await send_html(context.bot, update.message.chat_id, referral_msg(update.effective_user.id, bot_info.username), reply_markup=back_kb())
+    await send_html(context.bot, msg.chat_id, referral_msg(user.id, bot_info.username),
+                     reply_markup=back_kb())
+
 
 async def credits_cmd(update, context):
-    if not get_user(update.effective_user.id): create_user(update.effective_user.id, "", "")
-    await send_html(context.bot, update.message.chat_id, credits_msg(update.effective_user.id), reply_markup=back_kb())
+    msg = update.message
+    user = update.effective_user
+    if not get_user(user.id):
+        create_user(user.id, user.username or "", user.first_name or "")
+    if user.id != ADMIN_ID:
+        missing = await get_missing_channels(context.bot, user.id)
+        if missing:
+            await send_html(context.bot, msg.chat_id, force_join_msg(), reply_markup=force_join_kb())
+            return
+    await send_html(context.bot, msg.chat_id, credits_msg(user.id),
+                     reply_markup=back_kb())
 
+
+# ================== ADMIN ==================
 async def admin_cmd(update, context):
     uid = update.effective_user.id
     if uid != ADMIN_ID:
-        await send_html(context.bot, update.message.chat_id, f"❌ <b>{b('Access Denied')}</b>")
+        await send_html(context.bot, update.message.chat_id,
+                         f"❌ <b>{b('Access Denied')}</b>\n\nTum admin nahi ho.")
         return
-    await send_html(context.bot, update.message.chat_id, f"👑  <b>{b('Admin Panel')}</b>  👑", reply_markup=admin_kb())
+    await send_html(context.bot, update.message.chat_id,
+                     f"👑  <b>{b('Admin Panel')}</b>  👑\n\nSelect option below:",
+                     reply_markup=admin_kb())
+
 
 async def broadcast_cmd(update, context):
     if update.effective_user.id != ADMIN_ID: return
-    if not context.args: return
+    if not context.args:
+        await send_html(context.bot, update.message.chat_id, "Usage: /broadcast <message>")
+        return
     m = " ".join(context.args)
     users = db_fetch("SELECT user_id FROM users")
-    st = await send_html(context.bot, update.message.chat_id, f"📢 Broadcasting to {len(users)}...")
     sent = fail = 0
-    for u in users:
+    st = await send_html(context.bot, update.message.chat_id,
+                          f"📢 Broadcasting to {len(users)}...")
+    for idx, u in enumerate(users):
         try:
-            await context.bot.send_message(u["user_id"], f"📢 <b>{b('Broadcast')}</b>\n\n{H(m)}", parse_mode=ParseMode.HTML)
+            await context.bot.send_message(u["user_id"],
+                                            f"📢 <b>{b('Broadcast')}</b>\n\n{H(m)}",
+                                            parse_mode=ParseMode.HTML)
             sent += 1
         except: fail += 1
+        if (idx + 1) % 10 == 0 and st:
+            try: await st.edit_text(f"📢 {idx+1}/{len(users)}")
+            except: pass
         await asyncio.sleep(0.05)
     if st:
         try: await st.edit_text(f"✅ Sent: {sent}\n❌ Failed: {fail}")
         except: pass
 
+
+# ================== CALLBACK HANDLER ==================
 async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     d = q.data
@@ -598,125 +856,277 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except: pass
 
     if d.startswith("a_"):
-        if uid != ADMIN_ID: return
-        await handle_admin_callback(q, context, d); return
+        if uid != ADMIN_ID:
+            try: await q.answer("Access denied.", show_alert=True)
+            except: pass
+            return
+        await handle_admin_callback(q, context, d)
+        return
 
-    if not get_user(uid): create_user(uid, q.from_user.username or "", q.from_user.first_name or "")
+    if not get_user(uid):
+        create_user(uid, q.from_user.username or "", q.from_user.first_name or "")
 
     if d == "check_join_now":
-        if await get_missing_channels(context.bot, uid):
+        missing = await get_missing_channels(context.bot, uid)
+        if missing:
             await edit_q(q, force_join_msg(), reply_markup=force_join_kb())
-            try: await q.answer("Pehle channel join karo!", show_alert=True)
+            try: await q.answer("❌ Pehle @sterniterspro join karo!", show_alert=True)
             except: pass
         else:
             mark_join_verified(uid)
-            await edit_q(q, f"✅  <b>{b('Verified!')}</b>  ✅\n\nAb bot use kar sakte ho.\n\nNeeche se start karo 👇", reply_markup=main_menu_kb())
+            await edit_q(q,
+                f"✅  <b>{b('Verified!')}</b>  ✅\n\n"
+                f"Ab bot use kar sakte ho.\n\nNeeche se start karo 👇",
+                reply_markup=main_menu_kb())
         return
 
-    if uid != ADMIN_ID and d != "main_menu":
-        if await get_missing_channels(context.bot, uid):
-            await edit_q(q, force_join_msg(), reply_markup=force_join_kb()); return
+    # Force join check for all buttons
+    if uid != ADMIN_ID:
+        missing = await get_missing_channels(context.bot, uid)
+        if missing:
+            await edit_q(q, force_join_msg(), reply_markup=force_join_kb())
+            return
 
-    if d == "main_menu": await edit_q(q, welcome_msg(uid), reply_markup=main_menu_kb(), disable_web_page_preview=True)
-    elif d == "menu_help": await edit_q(q, help_msg(), reply_markup=back_kb())
-    elif d == "my_credits": await edit_q(q, credits_msg(uid), reply_markup=back_kb())
+    if d == "main_menu":
+        await edit_q(q, welcome_msg(uid), reply_markup=main_menu_kb(),
+                      disable_web_page_preview=True)
+    elif d == "menu_help":
+        await edit_q(q, help_msg(), reply_markup=back_kb())
+    elif d == "my_credits":
+        await edit_q(q, credits_msg(uid), reply_markup=back_kb())
     elif d == "my_referral":
         bot_info = await context.bot.get_me()
         await edit_q(q, referral_msg(uid, bot_info.username), reply_markup=back_kb())
-    elif d == "redeem_prompt": await edit_q(q, f"🎟️ <b>{b('Redeem Code')}</b>\n\nBhejo : <code>/redeem YOURCODE</code>", reply_markup=back_kb())
-    elif d == "close_menu": await edit_q(q, f"❌ <b>{b('Menu Closed')}</b>")
-    elif d == "new_lookup": await edit_q(q, f"🔍 <b>{b('New Bypass')}</b>\n\nBas koi short link message me bhejo!", reply_markup=back_kb())
+    elif d == "redeem_prompt":
+        await edit_q(q, f"🎟️ <b>{b('Redeem Code')}</b>\n\nBhejo : <code>/redeem YOURCODE</code>",
+                      reply_markup=back_kb())
+    elif d == "close_menu":
+        await edit_q(q, f"❌ <b>{b('Menu Closed')}</b>")
+    elif d in ("new_lookup", "hlp_bypass"):
+        await edit_q(q,
+            f"🔓 <b>{b('Bypass Shortener Link')}</b>\n\n"
+            f"Seedha chat me apna short link bhejo:\n"
+            f"<code>https://shortxlinks.in/EqJlsCQt</code>\n\n"
+            f"💰 Cost : {CREDIT_PER_LOOKUP} credit",
+            reply_markup=back_kb())
+    elif d == "hlp_supported":
+        await edit_q(q,
+            f"⚡ <b>{b('Supported Shorteners')}</b>\n\n"
+            f"• Shortxlinks, Softurl, GPLinks, Droplink\n"
+            f"• Adrinolinks, VPLink, ShrinkMe, Linkvertise\n"
+            f"• Earn4Link, TNShort, V2Links & 100+ more!\n\n"
+            f"💡 Seedha link bhejo aur instant bypass pao!",
+            reply_markup=back_kb())
+
 
 async def handle_admin_callback(q, context, d):
     if d == "a_stats":
-        users = total_users(); chs = len(get_admin_channels()) + len(REQUIRED_CHANNELS); codes = len(list_codes())
-        h, r = divmod(int(time.time() - START_TIME), 3600); m, s = divmod(r, 60)
-        text = (f"📊  <b>{b('Bot Statistics')}</b>  📊\n\n👥 <b>{b('Users')}</b> : {users}\n📢 <b>{b('Channels')}</b> : {chs}\n"
-                f"🎟️ <b>{b('Codes')}</b> : {codes}\n⏱️ <b>{b('Uptime')}</b> : {h}h {m}m {s}s\n\n💎 <b>{b('Credit Economy')}</b> :\n"
-                f"  Start : {CREDIT_START}\n  Ref : +{REFERRAL_REWARD}\n  Cost : {CREDIT_PER_LOOKUP}{owner_footer()}")
+        users = total_users()
+        chs = len(all_required_channels())
+        codes = len(list_codes())
+        up = int(time.time() - START_TIME)
+        h, r = divmod(up, 3600); m, s = divmod(r, 60)
+        text = (f"📊  <b>{b('Bot Statistics')}</b>  📊\n\n"
+                f"👥 <b>{b('Users')}</b> : {users}\n"
+                f"📢 <b>{b('Channels')}</b> : {chs}\n"
+                f"🎟️ <b>{b('Active Codes')}</b> : {codes}\n"
+                f"⏱️ <b>{b('Uptime')}</b> : {h}h {m}m {s}s\n\n"
+                f"💎 <b>{b('Credit Economy')}</b> :\n"
+                f"  Start : {CREDIT_START}\n"
+                f"  Referrer : +{REFERRAL_REWARD}\n"
+                f"  Referred : +{REFERRAL_BONUS_NEW}\n"
+                f"  Cost : {CREDIT_PER_LOOKUP}{owner_footer()}")
         await edit_q(q, text, reply_markup=admin_kb())
-    elif d == "a_channels": await edit_q(q, "📢  <b>Force Join Channels</b>", reply_markup=channels_kb())
+    elif d == "a_channels":
+        chs_admin = get_admin_channels()
+        txt = f"📢  <b>{b('Force Join Channels')}</b>  📢\n\n"
+        txt += f"<b>🔒 Default (Locked)</b> :\n"
+        for c in REQUIRED_CHANNELS:
+            txt += f"  @{H_code(c['username'])} — {H(c['title'])}\n"
+        txt += f"\n<b>➕ Admin Added</b> :\n"
+        if chs_admin:
+            for c in chs_admin:
+                txt += f"  @{H_code(c['username'])} — {H(c.get('title') or 'N/A')}\n"
+        else:
+            txt += f"  None\n"
+        txt += f"\nChoose action:"
+        await edit_q(q, txt, reply_markup=channels_kb())
     elif d == "a_ch_add":
         context.user_data["awaiting"] = "ch_add"
-        await edit_q(q, f"➕ <b>{b('Add Channel')}</b>\n\nBhejo : <code>@username Title</code>\n\nYa /cancel")
+        await edit_q(q, f"➕ <b>{b('Add Channel')}</b>\n\n"
+                        f"Bhejo : <code>@username Title</code>\n\n"
+                        f"Example:\n<code>@mychannel My Channel</code>\n\nYa /cancel")
     elif d == "a_ch_remove":
         context.user_data["awaiting"] = "ch_remove"
-        await edit_q(q, f"➖ <b>{b('Remove Channel')}</b>\n\nBhejo : <code>@username</code>\n\nYa /cancel")
+        await edit_q(q, f"➖ <b>{b('Remove Channel')}</b>\n\n"
+                        f"Bhejo : <code>@username</code>\n\n"
+                        f"⚠️ Default channel remove nahi hoga.\n\nYa /cancel")
     elif d == "a_ch_list":
         chs = get_admin_channels()
-        txt = f"📢 <b>{b('Admin Channels')}</b>\n\n" + "".join([f"  @{H(c['username'])} — {H(c['title'])}\n" for c in chs]) if chs else "📢 No extra channels."
-        await edit_q(q, txt, reply_markup=channels_kb())
-    elif d == "a_back": await edit_q(q, f"👑  <b>{b('Admin Panel')}</b>  👑", reply_markup=admin_kb())
+        if not chs:
+            await edit_q(q, f"📢 No extra channels.", reply_markup=channels_kb())
+        else:
+            txt = f"📢 <b>{b('Admin Channels')}</b>\n\n"
+            for c in chs:
+                txt += f"  @{H_code(c['username'])} — {H(c.get('title') or 'N/A')}\n"
+            await edit_q(q, txt, reply_markup=channels_kb())
+    elif d == "a_back":
+        await edit_q(q, f"👑  <b>{b('Admin Panel')}</b>  👑\n\nSelect option:",
+                      reply_markup=admin_kb())
     elif d == "a_code_create":
         context.user_data["awaiting"] = "code_create"
-        await edit_q(q, f"🎟️ <b>{b('Create Code')}</b>\n\nBhejo : <code>CODE CREDITS USES</code>\n\nYa /cancel")
+        await edit_q(q, f"🎟️ <b>{b('Create Code')}</b>\n\n"
+                        f"Bhejo : <code>CODE CREDITS USES</code>\n\n"
+                        f"Example:\n<code>LEON50 50 10</code>\n\nYa /cancel")
     elif d == "a_code_list":
         codes = list_codes()
-        txt = f"🎟️  <b>{b('Redeem Codes')}</b>  🎟️\n\n" + "".join([f"  <code>{H(c['code'])}</code> (💰 {c['credits']} | 📊 {c['used_count']}/{c['max_uses']})\n" for c in codes[:30]]) if codes else "🎟️ No codes."
+        if not codes:
+            await edit_q(q, f"🎟️ No codes.", reply_markup=admin_kb())
+            return
+        txt = f"🎟️  <b>{b('Redeem Codes')}</b>  🎟️\n\n"
+        for c in codes[:30]:
+            txt += (f"  <code>{H_code(c['code'])}</code>\n"
+                    f"     💰 {c['credits']} | 📊 {c['used_count']}/{c['max_uses']}\n")
         await edit_q(q, txt, reply_markup=admin_kb())
     elif d == "a_code_del":
         context.user_data["awaiting"] = "code_del"
-        await edit_q(q, f"🗑️ <b>{b('Delete Code')}</b>\n\nBhejo : <code>CODE</code>\n\nYa /cancel")
-    elif d == "a_broadcast": await edit_q(q, f"📣 <b>{b('Broadcast')}</b>\n\nCommand : <code>/broadcast message</code>")
-    elif d == "a_close": await edit_q(q, f"❌ <b>{b('Admin Panel Closed')}</b>")
+        await edit_q(q, f"🗑️ <b>{b('Delete Code')}</b>\n\n"
+                        f"Bhejo : <code>CODE</code>\n\nYa /cancel")
+    elif d == "a_broadcast":
+        await edit_q(q, f"📣 <b>{b('Broadcast')}</b>\n\n"
+                        f"Command : <code>/broadcast Your message</code>")
+    elif d == "a_close":
+        await edit_q(q, f"❌ <b>{b('Admin Panel Closed')}</b>")
 
+
+# ================== ADMIN TEXT ==================
 async def handle_admin_text(update, context):
     if update.effective_user.id != ADMIN_ID: return False
     awaiting = context.user_data.get("awaiting")
     if not awaiting: return False
+
     text = (update.message.text or "").strip()
     if text == "/cancel":
         context.user_data.pop("awaiting", None)
         await send_html(context.bot, update.message.chat_id, "✅ Cancelled.")
         return True
-    if text.startswith("/"): return False
+    if not text or text.startswith("/"): return False
 
     if awaiting == "ch_add":
         parts = text.split(maxsplit=1)
-        add_channel(parts[0].lstrip("@"), parts[1] if len(parts) > 1 else parts[0].lstrip("@"))
+        uname = parts[0].lstrip("@")
+        title = parts[1] if len(parts) > 1 else uname
+        add_channel(uname, title)
         context.user_data.pop("awaiting", None)
-        await send_html(context.bot, update.message.chat_id, f"✅ Channel Added", reply_markup=admin_kb())
+        await send_html(context.bot, update.message.chat_id,
+                         f"✅ <b>{b('Channel Added')}</b>\n\n  @{H(uname)} — {H(title)}",
+                         reply_markup=admin_kb())
         return True
     if awaiting == "ch_remove":
-        remove_channel(text.lstrip("@"))
+        uname = text.lstrip("@")
+        remove_channel(uname)
         context.user_data.pop("awaiting", None)
-        await send_html(context.bot, update.message.chat_id, f"✅ Channel Removed", reply_markup=admin_kb())
+        await send_html(context.bot, update.message.chat_id,
+                         f"✅ <b>{b('Channel Removed')}</b>\n\n  @{H(uname)}",
+                         reply_markup=admin_kb())
         return True
     if awaiting == "code_create":
         parts = text.split()
-        if len(parts) >= 3:
-            create_code(parts[0].upper(), int(parts[1]), int(parts[2]), update.effective_user.id)
-            await send_html(context.bot, update.message.chat_id, f"✅ Code Created", reply_markup=admin_kb())
+        if len(parts) < 3:
+            await send_html(context.bot, update.message.chat_id, "Format: CODE CREDITS USES")
+            return True
+        try:
+            code = parts[0].upper(); credits = int(parts[1]); uses = int(parts[2])
+        except:
+            await send_html(context.bot, update.message.chat_id, "Invalid numbers.")
+            return True
+        if create_code(code, credits, uses, update.effective_user.id):
+            await send_html(context.bot, update.message.chat_id,
+                             f"✅ <b>{b('Code Created')}</b>\n\n"
+                             f"🎟️ <code>{H_code(code)}</code>\n💰 {credits}\n📊 {uses}",
+                             reply_markup=admin_kb())
+        else:
+            await send_html(context.bot, update.message.chat_id, "❌ Code already exists.")
         context.user_data.pop("awaiting", None)
         return True
     if awaiting == "code_del":
-        db_exec("DELETE FROM redeem_codes WHERE code=?", (text.upper(),))
+        delete_code(text.upper())
         context.user_data.pop("awaiting", None)
-        await send_html(context.bot, update.message.chat_id, f"✅ Code Deleted", reply_markup=admin_kb())
+        await send_html(context.bot, update.message.chat_id,
+                         f"✅ <b>{b('Code Deleted')}</b>\n\n  <code>{H_code(text.upper())}</code>",
+                         reply_markup=admin_kb())
         return True
     return False
 
+
+# ================== MESSAGE HANDLER ==================
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.message
+    if not msg or not msg.text: return
+    user = msg.from_user
+    text = msg.text.strip()
+    if text.startswith("/"): return
+
+    if user.id == ADMIN_ID:
+        handled = await handle_admin_text(update, context)
+        if handled: return
+
+    if not get_user(user.id):
+        create_user(user.id, user.username or "", user.first_name or "")
+
+    if user.id != ADMIN_ID:
+        missing = await get_missing_channels(context.bot, user.id)
+        if missing:
+            await send_html(context.bot, msg.chat_id, force_join_msg(),
+                             reply_markup=force_join_kb())
+            return
+
+    # Extract URL from message (supports http://, https://, or domain/path)
+    url_match = re.search(r"(https?://[^\s<>\"']+)", text)
+    if url_match:
+        await do_bypass(update, context, url_match.group(1).strip())
+        return
+
+    domain_match = re.search(r"\b([a-zA-Z0-9\-]+\.[a-zA-Z]{2,}/[^\s<>\"']+)", text)
+    if domain_match:
+        await do_bypass(update, context, "https://" + domain_match.group(1).strip())
+        return
+
+    await send_html(
+        context.bot, msg.chat_id,
+        f"⚠️ <b>{b('Invalid Input')}</b>\n\n"
+        f"Koi valid shortener link bhejo!\n"
+        f"Example : <code>https://shortxlinks.in/EqJlsCQt</code>",
+        reply_markup=main_menu_kb()
+    )
+
+
 # ================== MAIN ==================
 def main():
+    if not BOT_TOKEN:
+        raise RuntimeError("BOT_TOKEN is missing.")
     print("=" * 60)
-    print("🚀 Leon Bypass Bot starting...")
+    print("👽 Leon Bypass Bot starting...")
     print(f"Admin ID: {ADMIN_ID}")
+    print("⚠️  Bot ko @sterniterspro ka ADMIN rakho!")
     print("=" * 60)
     app = Application.builder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start_cmd))
     app.add_handler(CommandHandler("help", lambda u, c: send_html(c.bot, u.message.chat_id, help_msg(), reply_markup=back_kb())))
-    app.add_handler(CommandHandler("bypass", lambda u, c: do_bypass(u, c, u.message.text.split(maxsplit=1)[1]) if len(u.message.text.split()) > 1 else send_html(c.bot, u.message.chat_id, "Usage: /bypass <link>")))
+    app.add_handler(CommandHandler("bypass", bypass_cmd))
     app.add_handler(CommandHandler("redeem", redeem_cmd))
     app.add_handler(CommandHandler("refer", refer_cmd))
     app.add_handler(CommandHandler("credits", credits_cmd))
     app.add_handler(CommandHandler("admin", admin_cmd))
     app.add_handler(CommandHandler("broadcast", broadcast_cmd))
+
     app.add_handler(CallbackQueryHandler(callback_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     print("✅ Bot live!")
     app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
+
 
 if __name__ == "__main__":
     main()
