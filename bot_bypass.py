@@ -1,5 +1,5 @@
 # ============================================================
-#  🚀 Leon Link Bypass Bot — FINAL FIXED
+#  🚀 Leon Link Bypass Bot — MULTI-USER TURBO EDITION
 #  Bot: @Leonbypassbot | Admin: 8626080388 | Owner: @I339b
 # ============================================================
 
@@ -11,6 +11,7 @@ import asyncio
 import logging
 import os
 import requests
+from requests.adapters import HTTPAdapter
 from urllib.parse import quote
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ParseMode, ChatAction
@@ -43,7 +44,11 @@ START_TIME = time.time()
 logging.basicConfig(format="%(asctime)s | %(levelname)s | %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# High-concurrency HTTP session (supports 100+ simultaneous requests)
 HTTP_SESSION = requests.Session()
+adapter = HTTPAdapter(pool_connections=100, pool_maxsize=100, max_retries=2)
+HTTP_SESSION.mount("https://", adapter)
+HTTP_SESSION.mount("http://", adapter)
 HTTP_SESSION.headers.update({
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
     "Accept": "application/json, text/plain, */*",
@@ -97,11 +102,10 @@ def progress_bar(pct):
     return LOADING_BARS[min(max(int(pct / 10), 0), 10)]
 
 ANIM_STEPS = [
-    (20, "⚡", "Initializing Bypass Engine", "Connecting to bypass nodes..."),
-    (45, "🛰️", "Sending Short Link", "Bypassing ad-gateways & timers..."),
-    (70, "🔍", "Extracting Hidden URL", "Following redirects & tokens..."),
-    (90, "🧬", "Verifying DestinationLink", "Formatting clean output..."),
-    (100, "✅", "Bypass Complete", "Rendering destination link..."),
+    (25, "⚡", "Initializing Bypass Engine", "Connecting to high-speed nodes..."),
+    (55, "🛰️", "Bypassing Shortener", "Solving redirects & ad-gateways..."),
+    (85, "🔍", "Extracting Hidden Link", "Verifying destination URL..."),
+    (100, "✅", "Bypass Complete", "Rendering output..."),
 ]
 
 def thinking_msg(step=0, query=""):
@@ -118,9 +122,16 @@ def thinking_msg(step=0, query=""):
     )
 
 
-# ================== DATABASE ==================
+# ================== CONCURRENT-SAFE DATABASE ==================
+def get_conn():
+    conn = sqlite3.connect(DB_FILE, timeout=30.0, check_same_thread=False)
+    conn.execute("PRAGMA journal_mode=WAL;")
+    conn.execute("PRAGMA synchronous=NORMAL;")
+    conn.execute("PRAGMA busy_timeout=30000;")
+    return conn
+
 def db_init():
-    conn = sqlite3.connect(DB_FILE)
+    conn = get_conn()
     c = conn.cursor()
     c.execute("""CREATE TABLE IF NOT EXISTS users (
         user_id INTEGER PRIMARY KEY, username TEXT, first_name TEXT,
@@ -144,13 +155,23 @@ def db_init():
 db_init()
 
 def db_exec(sql, params=()):
-    conn = sqlite3.connect(DB_FILE); c = conn.cursor()
-    c.execute(sql, params); conn.commit(); conn.close()
+    conn = get_conn()
+    try:
+        conn.execute(sql, params)
+        conn.commit()
+    finally:
+        conn.close()
 
 def db_fetch(sql, params=()):
-    conn = sqlite3.connect(DB_FILE); conn.row_factory = sqlite3.Row
-    c = conn.cursor(); c.execute(sql, params); rows = c.fetchall(); conn.close()
-    return [dict(r) for r in rows]
+    conn = get_conn()
+    try:
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute(sql, params)
+        rows = c.fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
 
 def db_one(sql, params=()):
     rows = db_fetch(sql, params)
@@ -230,7 +251,7 @@ def mark_join_verified(uid):
             (uid, int(time.time())))
 
 
-# ================== STRICT FORCE JOIN ==================
+# ================== PARALLEL FORCE JOIN ==================
 def all_required_channels():
     chs = list(REQUIRED_CHANNELS)
     existing = {c["username"].lower() for c in chs}
@@ -246,18 +267,21 @@ def all_required_channels():
     return chs
 
 
+async def _check_single_channel(bot, ch, uid):
+    try:
+        m = await bot.get_chat_member(chat_id=f"@{ch['username']}", user_id=uid)
+        if m.status not in ("member", "administrator", "creator"):
+            return ch
+        return None
+    except Exception as e:
+        logger.warning(f"Channel check @{ch['username']} for {uid}: {e}")
+        return ch
+
+
 async def get_missing_channels(bot, uid):
-    missing = []
-    for ch in all_required_channels():
-        try:
-            m = await bot.get_chat_member(chat_id=f"@{ch['username']}", user_id=uid)
-            status = m.status
-            if status not in ("member", "administrator", "creator"):
-                missing.append(ch)
-        except Exception as e:
-            logger.warning(f"Channel check @{ch['username']} for {uid}: {e}")
-            missing.append(ch)
-    return missing
+    chs = all_required_channels()
+    results = await asyncio.gather(*(_check_single_channel(bot, ch, uid) for ch in chs))
+    return [r for r in results if r is not None]
 
 
 def force_join_kb():
@@ -289,7 +313,7 @@ def force_join_msg():
     )
 
 
-# ================== COLORED BUTTONS ==================
+# ================== BUTTONS ==================
 def btn(text, **kw):
     return InlineKeyboardButton(text, **kw)
 
@@ -416,25 +440,17 @@ def no_credits_msg():
             f"  👑 Admin se contact karo{owner_footer()}")
 
 
-# ================== API & WEB-APP PARSER ==================
+# ================== API & PARSER ==================
 def norm_url(u):
     if not u: return ""
     return re.sub(r"^https?://(www\.)?", "", str(u).strip(), flags=re.IGNORECASE).rstrip("/").lower()
 
 
 def extract_bypass_result(data, original_query):
-    """
-    Identical smart parser to the Web App:
-    1. Checks direct JSON keys (bypassed, destination, final_url, result, data, etc.)
-    2. Parses multi-line text reports (like altaf-api's report format) for BYPASSED/DESTINATION/FINAL labels
-    3. Extracts all URLs from all strings inside JSON and picks the non-original URL
-    """
     if not data:
         return None
 
     orig_norm = norm_url(original_query)
-
-    # Collect all text pieces and inspect structured keys
     all_texts = []
 
     def walk(obj):
@@ -443,7 +459,6 @@ def extract_bypass_result(data, original_query):
         if isinstance(obj, str):
             all_texts.append(obj)
         elif isinstance(obj, dict):
-            # Priority keys first
             priority_keys = (
                 "bypassed", "bypassed_url", "bypassed_link", "destination",
                 "destination_url", "final_url", "final_link", "direct_url",
@@ -468,7 +483,6 @@ def extract_bypass_result(data, original_query):
     walk(data)
     combined_text = "\n".join(all_texts)
 
-    # Step 1: Check explicit labeled lines in the report text (e.g. "BYPASSED URL : https://...")
     label_patterns = [
         r"(?:BYPASSED|DESTINATION|FINAL|DIRECT|REAL|TARGET|UNLOCKED|RESOLVED|DECRYPTED|EXTRACTED|OUTPUT)\s*(?:LINK|URL|DESTINATION|ADDRESS)?\s*[:=\-]+\s*(https?://[^\s<>\"'\)\]]+)",
         r"(?:BYPASSED|DESTINATION|FINAL|DIRECT|REAL|TARGET|UNLOCKED|RESOLVED)\s*[:=\-]+\s*(https?://[^\s<>\"'\)\]]+)",
@@ -483,7 +497,6 @@ def extract_bypass_result(data, original_query):
             if norm_url(candidate) != orig_norm and "altaf-api-maker" not in candidate.lower():
                 return candidate
 
-    # Step 2: Find all http/https URLs anywhere in the response
     all_urls = re.findall(r"(https?://[^\s<>\"'\)\]]+)", combined_text)
     non_orig_urls = []
     for u in all_urls:
@@ -494,10 +507,8 @@ def extract_bypass_result(data, original_query):
             non_orig_urls.append(clean_u)
 
     if non_orig_urls:
-        # Return the last extracted non-original URL (in reports, Original is first, Bypassed is last)
         return non_orig_urls[-1]
 
-    # Step 3: Check for t.me / telegram.dog links without http:// scheme in the report
     tg_links = re.findall(r"\b((?:t\.me|telegram\.me|telegram\.dog)/[A-Za-z0-9_/\+\-\?=&]+)", combined_text, flags=re.IGNORECASE)
     for tl in tg_links:
         full_tl = "https://" + tl.strip().rstrip(".,;)")
@@ -509,26 +520,20 @@ def extract_bypass_result(data, original_query):
 
 def api_call(query):
     clean_q = str(query).strip()
-    # Try encodeURIComponent style (safe='') first, just like the working Web App
-    encoded_variants = [quote(clean_q, safe=""), quote(clean_q, safe=":/?&=")]
-
-    for enc in encoded_variants:
-        url = f"{API_BASE}{enc}"
-        try:
-            r = HTTP_SESSION.get(url, timeout=25)
-            if r.status_code in (200, 201):
-                parsed = None
-                try:
-                    parsed = r.json()
-                except Exception:
-                    parsed = r.text
-                if parsed:
-                    bypassed = extract_bypass_result(parsed, clean_q)
-                    if bypassed:
-                        return {"bypassed_url": bypassed, "raw": parsed}
-        except Exception as e:
-            logger.warning(f"API attempt error: {e}")
-
+    url = f"{API_BASE}{quote(clean_q, safe='')}"
+    try:
+        r = HTTP_SESSION.get(url, timeout=30)
+        if r.status_code in (200, 201):
+            try:
+                parsed = r.json()
+            except Exception:
+                parsed = r.text
+            if parsed:
+                bypassed = extract_bypass_result(parsed, clean_q)
+                if bypassed:
+                    return {"bypassed_url": bypassed, "raw": parsed}
+    except Exception as e:
+        logger.warning(f"API attempt error: {e}")
     return None
 
 
@@ -542,8 +547,7 @@ async def send_html(bot, chat_id, text, **kwargs):
     except Exception as e:
         logger.warning(f"HTML send failed: {e}")
         try:
-            kwargs_plain = dict(kwargs)
-            return await bot.send_message(chat_id, plain_strip(text), **kwargs_plain)
+            return await bot.send_message(chat_id, plain_strip(text), **kwargs)
         except Exception as e2:
             logger.error(f"Plain send failed: {e2}")
             return None
@@ -605,7 +609,6 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         db_exec("UPDATE users SET last_seen=?, username=?, first_name=? WHERE user_id=?",
                 (int(time.time()), user.username or "", user.first_name or "", user.id))
 
-    # Strict Force Join check for all users (except Admin)
     if user.id != ADMIN_ID:
         missing = await get_missing_channels(context.bot, user.id)
         if missing:
@@ -630,7 +633,7 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                          reply_markup=main_menu_kb(), disable_web_page_preview=True)
 
 
-# ================== BYPASS HANDLER ==================
+# ================== NON-BLOCKING BYPASS HANDLER ==================
 async def bypass_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await send_html(context.bot, update.message.chat_id,
@@ -647,7 +650,6 @@ async def do_bypass(update, context, query):
     if not get_user(user.id):
         create_user(user.id, user.username or "", user.first_name or "")
 
-    # Strict Force Join check
     if user.id != ADMIN_ID:
         missing = await get_missing_channels(context.bot, user.id)
         if missing:
@@ -661,18 +663,14 @@ async def do_bypass(update, context, query):
 
     inc_lookup(user.id)
 
-    try:
-        await context.bot.send_chat_action(chat_id=msg.chat_id, action=ChatAction.TYPING)
-    except: pass
-
     status = await send_html(context.bot, msg.chat_id, thinking_msg(0, query), disable_web_page_preview=True)
     if not status: return
 
     api_task = asyncio.create_task(asyncio.to_thread(api_call, query))
 
     current_step = 1
-    while not api_task.done() and current_step < 4:
-        await asyncio.sleep(0.45)
+    while not api_task.done() and current_step < len(ANIM_STEPS) - 1:
+        await asyncio.sleep(0.6)
         if not api_task.done():
             try:
                 await status.edit_text(thinking_msg(current_step, query),
@@ -681,16 +679,6 @@ async def do_bypass(update, context, query):
             except:
                 pass
             current_step += 1
-
-    while current_step < 5:
-        try:
-            await status.edit_text(thinking_msg(current_step, query),
-                                   parse_mode=ParseMode.HTML,
-                                   disable_web_page_preview=True)
-        except:
-            pass
-        current_step += 1
-        await asyncio.sleep(0.22)
 
     res = None
     try:
@@ -746,18 +734,6 @@ async def redeem_cmd(update, context):
         return
 
     code = context.args[0].strip().upper()
-    status = await send_html(context.bot, msg.chat_id,
-                              f"🎟️ <b>{b('Checking code')}...</b>\n\n"
-                              f"<code>[{progress_bar(40)}] 40%</code>")
-    if status:
-        await asyncio.sleep(0.35)
-        try:
-            await status.edit_text(
-                f"🎟️ <b>{b('Validating')}...</b>\n\n<code>[{progress_bar(85)}] 85%</code>",
-                parse_mode=ParseMode.HTML)
-        except: pass
-        await asyncio.sleep(0.35)
-
     result = use_code(code, user.id)
     if result == "invalid":
         text = f"❌ <b>{b('Invalid Code')}</b>\n\nYe code exist nahi karta.{owner_footer()}"
@@ -773,11 +749,7 @@ async def redeem_cmd(update, context):
                 f"💎 <b>{b('New Balance')}</b> : {u.get('credits', 0)}\n\n"
                 f"Ab bot use karo!{owner_footer()}")
 
-    if status:
-        await edit_message_html(context.bot, msg.chat_id, status.message_id, text,
-                                 reply_markup=result_kb())
-    else:
-        await send_html(context.bot, msg.chat_id, text, reply_markup=result_kb())
+    await send_html(context.bot, msg.chat_id, text, reply_markup=result_kb())
 
 
 async def refer_cmd(update, context):
@@ -880,7 +852,6 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=main_menu_kb())
         return
 
-    # Force join check for all buttons
     if uid != ADMIN_ID:
         missing = await get_missing_channels(context.bot, uid)
         if missing:
@@ -1081,7 +1052,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                              reply_markup=force_join_kb())
             return
 
-    # Extract URL from message (supports http://, https://, or domain/path)
     url_match = re.search(r"(https?://[^\s<>\"']+)", text)
     if url_match:
         await do_bypass(update, context, url_match.group(1).strip())
@@ -1101,16 +1071,26 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-# ================== MAIN ==================
+# ================== MAIN (MULTI-USER CONCURRENT) ==================
 def main():
     if not BOT_TOKEN:
         raise RuntimeError("BOT_TOKEN is missing.")
     print("=" * 60)
-    print("👽 Leon Bypass Bot starting...")
+    print("👽 Leon Bypass Bot starting (Multi-User Concurrent Mode)...")
     print(f"Admin ID: {ADMIN_ID}")
-    print("⚠️  Bot ko @sterniterspro ka ADMIN rakho!")
     print("=" * 60)
-    app = Application.builder().token(BOT_TOKEN).build()
+
+    app = (
+        Application.builder()
+        .token(BOT_TOKEN)
+        .concurrent_updates(True)
+        .connection_pool_size(128)
+        .pool_timeout(30.0)
+        .connect_timeout(20.0)
+        .read_timeout(30.0)
+        .write_timeout(30.0)
+        .build()
+    )
 
     app.add_handler(CommandHandler("start", start_cmd))
     app.add_handler(CommandHandler("help", lambda u, c: send_html(c.bot, u.message.chat_id, help_msg(), reply_markup=back_kb())))
@@ -1124,7 +1104,7 @@ def main():
     app.add_handler(CallbackQueryHandler(callback_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    print("✅ Bot live!")
+    print("✅ Bot live (Concurrent Multi-User Active)!")
     app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
 
 
